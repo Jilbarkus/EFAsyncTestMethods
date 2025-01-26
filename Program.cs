@@ -12,33 +12,32 @@ namespace AsyncDemo
         {
             // based on: https://learn.microsoft.com/en-us/ef/ef6/fundamentals/async
             bool bLoop = true;
-            using (var context = new BloggingContext())
+
+            var context = new BloggingContext();
+            var dbContextTransaction = context.Database.BeginTransaction();
+
+            while (bLoop)
             {
-                using (var dbContextTransaction = context.Database.BeginTransaction())
-                {
-                    while (bLoop)
-                    {
-                        Console.WriteLine("NOTHING IS SAVED AUTOMATICALLY, Save with ENTER key\n");
-                        Console.WriteLine("S to search\n V to view records\n B to add a new Blog \n A to add posts to a blog \n R to remove a blog and all linked posts\n Enter to Save Changes\n D to view pending unsaved entities\n X to exit");
+                Console.WriteLine("\n\n-------------------MAIN MENU-------------------\n\n");
+                Console.WriteLine("S to search\n V to view records\n B to add a new Blog \n A to add posts to a blog \n R to remove a blog and all linked posts\n Enter to Save Changes\n D to view local entities\n BackSpace to rollback changes\n X to exit");
 
-                        //Blog? firstBlog = context.Blogs.Find(1);
+                //Blog? firstBlog = context.Blogs.Find(1);
 
-                        ConsoleKey usrInput = Console.ReadKey().Key;
-                        Console.Clear();
-                        bLoop = (usrInput != ConsoleKey.X);
+                ConsoleKey usrInput = Console.ReadKey().Key;
+                Console.Clear();
+                bLoop = (usrInput != ConsoleKey.X);
 
-                        if (bLoop != true) Environment.Exit(0);
+                if (bLoop != true) Environment.Exit(0);
 
-                        if (usrInput == ConsoleKey.S) RunSearchBlogById(context).Wait();
-                        else if (usrInput == ConsoleKey.V) DisplayBlogsAndPosts(context).Wait();
-                        else if (usrInput == ConsoleKey.A) AddPostsTpBlogById(context).Wait();
-                        else if (usrInput == ConsoleKey.B) AddBlog(context);
-                        else if (usrInput == ConsoleKey.R) RemoveBlogAndLinkedPosts(context).Wait();
-                        else if (usrInput == ConsoleKey.D) PrintContextLocalBlogsAndPosts(context);
-                        else if (usrInput == ConsoleKey.Enter) PrintAndSavePendingChanges(context, dbContextTransaction).Wait();
-                        else continue;
-                    }
-                }
+                if (usrInput == ConsoleKey.S) RunSearchBlogById(context).Wait();
+                else if (usrInput == ConsoleKey.V) DisplayBlogsAndPosts(context).Wait();
+                else if (usrInput == ConsoleKey.A) AddPostsTpBlogById(context).Wait();
+                else if (usrInput == ConsoleKey.B) AddBlog(context);
+                else if (usrInput == ConsoleKey.R) RemoveBlogAndLinkedPosts(context).Wait();
+                else if (usrInput == ConsoleKey.D) PrintContextLocalBlogsAndPosts(context);
+                else if (usrInput == ConsoleKey.Enter) PrintAndSavePendingChanges(ref context, ref dbContextTransaction);
+                else if (usrInput == ConsoleKey.Backspace) RollBackChanges(ref context, ref dbContextTransaction);
+                else continue;
             }
         }
 
@@ -55,7 +54,8 @@ namespace AsyncDemo
             Blog? blog = await context.Blogs.FindAsync(usrInt);
             if (blog == null)
             {
-                Console.WriteLine($"No Blog with Id: {usrInt}");
+                Console.Clear();
+                Console.WriteLine($"\n\n >>>>No Blog with Id: {usrInt}<<<<\n\n");
                 return;
             }
 
@@ -86,7 +86,7 @@ namespace AsyncDemo
             Blog? blog = await context.Blogs.FindAsync(usrInt);
             if (blog == null)
             {
-                Console.WriteLine($"No Blog with Id: {usrInt}");
+                Console.WriteLine($"\n\n >>>>No Blog with Id: {usrInt}<<<<\n\n");
                 return;
             }
 
@@ -140,15 +140,32 @@ namespace AsyncDemo
             PrintPendingChanges(context);
         }
 
-        public static async Task PrintAndSavePendingChanges(BloggingContext context, DbContextTransaction? transaction)
+        public static void PrintAndSavePendingChanges(ref BloggingContext context, ref DbContextTransaction? transaction)
         {
             PrintPendingChanges(context);
 
-            await context.SaveChangesAsync();
+            context.SaveChanges();
 
             transaction?.Commit();
 
             transaction = context.Database.BeginTransaction();
+        }
+
+        public static void RollBackChanges(ref BloggingContext context, ref DbContextTransaction? transaction)
+        {
+            if (context == null) return;
+
+            PrintPendingChanges(context);
+
+            transaction?.Rollback();
+
+            context = new BloggingContext();
+
+            transaction = context.Database.BeginTransaction();
+
+            Console.WriteLine("\n\n-------------------RollBack complete-------------------\n\n");
+
+            PrintPendingChanges(context);
         }
 
         public static int? TryGetUserInputInt()
@@ -164,14 +181,14 @@ namespace AsyncDemo
         public static void PrintPendingChanges(BloggingContext context)
         {
             // Get some information about just the tracked blogs
-            Console.WriteLine("\nPending Change Tracked blogs: ");
+            Console.WriteLine("\n>Pending Change Tracked blogs: ");
             foreach (var blog in context.ChangeTracker.Entries<Blog>())
             {
                 if (blog == null) continue;
                 Console.WriteLine($"Found Blog {blog.Entity.BlogId}: {blog.Entity.Name}, State:{blog.State}");
             };
 
-            Console.WriteLine("\nPending Change Tracked Posts: ");
+            Console.WriteLine("\n>Pending Change Tracked Posts: ");
             foreach (var post in context.ChangeTracker.Entries<Post>())
             {
                 if (post == null) continue;
@@ -202,56 +219,5 @@ namespace AsyncDemo
                     context.Entry(post).State);
             }
         }
-
-        
-
-        #region old
-        //public static async Task RunSearchBlogById()
-        //{
-        //    using (var context = new BloggingContext())
-        //    {
-        //        Console.WriteLine("Enter number then press Enter\n");
-        //        string? usrNumber = Console.ReadLine();
-        //        if (usrNumber == null
-        //            || (int.TryParse(usrNumber, out int value) == false))
-        //        {
-        //            Console.WriteLine("try again dude");
-        //            return;
-        //        }
-
-        //        Blog? result = await context.Blogs.FindAsync(blogId);
-        //        if (result == null) Console.WriteLine("none exist bro");
-        //        else result.PrintBlog();
-        //        return;
-        //    }
-        //}
-
-        //public static async Task AddAndDisplayBlogByName()
-        //{
-        //    using (var db = new BloggingContext())
-        //    {
-        //        // create a new blog and save it
-        //        db.Blogs.Add(
-        //            new Blog() { Name = "Test Blog #" + (db.Blogs.Count() + 1) }
-        //        );
-        //        Console.WriteLine("Calling SaveChanges.");
-        //        await db.SaveChangesAsync();
-        //        Console.WriteLine("SaveChanges Completed.");
-
-        //        //Query for all blogs ordered by name
-        //        Console.WriteLine("Executing query.");
-        //        var blogs = await (from b in db.Blogs
-        //                     orderby b.Name
-        //                     select b).ToListAsync();
-
-        //        // Write all blogs out to Console
-        //        Console.WriteLine("Query completed with following results:");
-        //        foreach (var blog in blogs)
-        //        {
-        //            Console.WriteLine(" " + blog.Name);
-        //        }
-        //    }
-        //} 
-        #endregion
     }
 }
